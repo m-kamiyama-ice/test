@@ -63,12 +63,16 @@ function createApplicationForms() {
         const newFormFile = DriveApp.getFileById(templateInfo.formId).makeCopy(caseName, parentFolder);
         const newForm = FormApp.openById(newFormFile.getId());
 
-        newForm.setAcceptingResponses(true);
-
         try {
           newForm.setPublished(true);
         } catch (err) {
           throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
+        }
+
+        try {
+          newForm.setAcceptingResponses(true);
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setAcceptingResponses失敗: ${err.message}`);
         }
 
         try {
@@ -167,12 +171,16 @@ function createConsentForms() {
         const newFormFile = DriveApp.getFileById(templateInfo.formId).makeCopy(caseName, parentFolder);
         const newForm = FormApp.openById(newFormFile.getId());
 
-        newForm.setAcceptingResponses(true);
-
         try {
           newForm.setPublished(true);
         } catch (err) {
           throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
+        }
+
+        try {
+          newForm.setAcceptingResponses(true);
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setAcceptingResponses失敗: ${err.message}`);
         }
 
         try {
@@ -259,12 +267,16 @@ function createDetailForms() {
         const newFormFile = DriveApp.getFileById(templateFormId).makeCopy(caseName, parentFolder);
         const newForm = FormApp.openById(newFormFile.getId());
 
-        newForm.setAcceptingResponses(true);
-
         try {
           newForm.setPublished(true);
         } catch (err) {
           throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
+        }
+
+        try {
+          newForm.setAcceptingResponses(true);
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setAcceptingResponses失敗: ${err.message}`);
         }
 
         try {
