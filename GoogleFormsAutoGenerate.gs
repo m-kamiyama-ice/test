@@ -18,30 +18,54 @@ function onOpen() {
 }
 
 /**
- * 設定用シートから「テンプレート名 → {formId, entryId}」のマップを読み込む
+ * 設定用シートから、sectionLabel（「応募フォーム」「同意書」「詳細レス」）の
+ * ブロックを検索して読み込む。
+ *
+ * ブロックの並び（sectionLabelの行を起点とした相対位置）:
+ *   sectionLabel行
+ *   sectionLabel行+1: フォルダID | テンプレート名1 | テンプレート名2 | ...
+ *   sectionLabel行+2: <folderId> | <formId1> | <formId2> | ...
+ *   sectionLabel行+3: (空欄)     | <entryId1> | <entryId2> | ...
  */
-function loadTemplateMap(settingSheet, nameRow, nameStartCol, nameEndCol, formIdRow, entryIdRow) {
-  const templateNames = settingSheet.getRange(nameRow, nameStartCol, 1, nameEndCol - nameStartCol + 1).getValues()[0];
+function loadFormTypeConfig(settingSheet, sectionLabel) {
+  const data = settingSheet.getDataRange().getValues();
+  let labelRow = -1;
+
+  for (let r = 0; r < data.length; r++) {
+    if (String(data[r][0]).trim() === sectionLabel) {
+      labelRow = r;
+      break;
+    }
+  }
+  if (labelRow === -1) {
+    throw new Error(`設定用シートに「${sectionLabel}」のブロックが見つかりません。`);
+  }
+
+  const headerRow = data[labelRow + 1];
+  const dataRow = data[labelRow + 2];
+  const entryRow = data[labelRow + 3];
+
+  const folderId = dataRow[0];
   const templates = {};
 
-  for (let i = 0; i < templateNames.length; i++) {
-    const col = nameStartCol + i;
-    const formId = settingSheet.getRange(formIdRow, col).getValue();
-    const entryId = settingSheet.getRange(entryIdRow, col).getValue();
-    if (formId && entryId && templateNames[i]) {
-      templates[templateNames[i]] = { formId: formId, entryId: entryId };
+  for (let c = 1; c < headerRow.length; c++) {
+    const templateName = headerRow[c];
+    const formId = dataRow[c];
+    const entryId = entryRow[c];
+    if (templateName && formId && entryId) {
+      templates[templateName] = { formId: formId, entryId: entryId };
     }
   }
 
-  return templates;
+  return { folderId: folderId, templates: templates };
 }
 
 /**
  * テンプレートフォームをコピーして公開設定・共有設定を行い、
- * 表示用URLと案件番号付きURLを返す
+ * 差し込み前URLと案件番号差し込み済みURLを返す
  */
-function createFormLink(templateFormId, entryId, parentFolder, caseName, caseNumber, rowLabel) {
-  const newFormFile = DriveApp.getFileById(templateFormId).makeCopy(caseName, parentFolder);
+function createFormLink(templateFormId, entryId, parentFolder, fileName, formTitle, caseNumber, rowLabel) {
+  const newFormFile = DriveApp.getFileById(templateFormId).makeCopy(fileName, parentFolder);
   const newForm = FormApp.openById(newFormFile.getId());
 
   try {
@@ -65,7 +89,9 @@ function createFormLink(templateFormId, entryId, parentFolder, caseName, caseNum
     throw new Error(`${rowLabel} setSharing失敗: ${err.message}`);
   }
 
-  newForm.setTitle(caseName);
+  if (formTitle) {
+    newForm.setTitle(formTitle);
+  }
 
   let viewUrl;
   try {
@@ -88,21 +114,28 @@ function createFormLink(templateFormId, entryId, parentFolder, caseName, caseNum
 }
 
 // =================================================================
-// 「案件管理」シートの1行ごとに、応募フォーム・同意書・詳細レスの
+// 「フォーム作成シート」の1行ごとに、応募フォーム・同意書・詳細レスの
 // リンクをまとめて作成する
 //
-// 列構成:
-//   A 案件管理番号
-//   B 案件名
-//   C 食事制限の有無（応募フォームのテンプレート選択）
-//   D ブリーフィングの有無（同意書のテンプレート選択）
-//   E 応募フォームURL       F 応募フォーム案件番号付きURL
-//   G 同意書URL             H 同意書案件番号付きURL
-//   I 詳細レスURL           J 詳細レス案件番号付きURL
+// 列構成（フォーム作成シート、データは3行目から）:
+//   A 案件番号
+//   B 応募フォームのテンプレート種別
+//   C 同意書のテンプレート種別
+//   D 募集エリア（未使用）    E 実施日（VLOOKUP・未使用）   F 学校名（VLOOKUP・未使用）
+//   G 応募フォーム 差し込み済みリンク（出力）
+//   H 同意書 差し込み済みリンク（出力）
+//   I 詳細レス 差し込み済みリンク（出力）
+//   J （未使用・区切り）
+//   K 応募フォームのファイル名（内部用）   L 応募フォームのタイトル（公開用）
+//   M 同意書のファイル名（内部用）         N 同意書のタイトル（公開用）
+//   O 詳細レスのファイル名（内部用）       P 詳細レスのタイトル（公開用）
+//   Q 応募フォーム 差し込み前URL（出力）
+//   R 同意書 差し込み前URL（出力）
+//   S 詳細レス 差し込み前URL（出力）
 // =================================================================
 function createAllForms() {
   const settingSheetName = '設定用シート';
-  const targetSheetName = '案件管理';
+  const targetSheetName = 'フォーム作成シート';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const settingSheet = ss.getSheetByName(settingSheetName);
   const targetSheet = ss.getSheetByName(targetSheetName);
@@ -117,87 +150,103 @@ function createAllForms() {
     return;
   }
 
+  const headerCheck = targetSheet.getRange(2, 1).getValue();
+  if (headerCheck !== '案件番号') {
+    ui.alert(`「${targetSheetName}」の2行目1列目が「案件番号」ではありません。シート構成が想定と異なる可能性があるため処理を中止しました。`);
+    return;
+  }
+
   const lastRow = targetSheet.getLastRow();
-  if (lastRow < 2) {
+  if (lastRow < 3) {
     ui.alert('入力データがありません。');
     return;
   }
 
   const COL = {
-    caseNumber: 1, caseName: 2, mealType: 3, briefingType: 4,
-    appFormUrl: 5, appFormPrefilled: 6,
-    consentUrl: 7, consentPrefilled: 8,
-    detailUrl: 9, detailPrefilled: 10
+    caseNumber: 1, appType: 2, consentType: 3,
+    appLink: 7, consentLink: 8, detailLink: 9,
+    appFileName: 11, appTitle: 12,
+    consentFileName: 13, consentTitle: 14,
+    detailFileName: 15, detailTitle: 16,
+    appPlainUrl: 17, consentPlainUrl: 18, detailPlainUrl: 19
   };
 
   try {
-    const appFolder = DriveApp.getFolderById(settingSheet.getRange('A3').getValue());
-    const appTemplates = loadTemplateMap(settingSheet, 2, 2, 4, 3, 4); // B2:D2 / row3=formId / row4=entryId
+    const appConfig = loadFormTypeConfig(settingSheet, '応募フォーム');
+    const consentConfig = loadFormTypeConfig(settingSheet, '同意書');
+    const detailConfig = loadFormTypeConfig(settingSheet, '詳細レス');
 
-    const consentFolder = DriveApp.getFolderById(settingSheet.getRange('A8').getValue());
-    const consentTemplates = loadTemplateMap(settingSheet, 7, 2, 3, 8, 9); // B7:C7 / row8=formId / row9=entryId
+    const appFolder = DriveApp.getFolderById(appConfig.folderId);
+    const consentFolder = DriveApp.getFolderById(consentConfig.folderId);
+    const detailFolder = DriveApp.getFolderById(detailConfig.folderId);
 
-    const detailFolder = DriveApp.getFolderById(settingSheet.getRange('A13').getValue());
-    const detailFormId = settingSheet.getRange('B13').getValue();
-    const detailEntryId = settingSheet.getRange('B14').getValue();
+    // 詳細レスはテンプレートが1種類のみ
+    const detailTemplateKeys = Object.keys(detailConfig.templates);
+    const detailTemplate = detailTemplateKeys.length > 0 ? detailConfig.templates[detailTemplateKeys[0]] : null;
 
-    const numRows = lastRow - 1;
-    const values = targetSheet.getRange(2, 1, numRows, 10).getValues();
+    const numRows = lastRow - 2; // 1〜2行目はヘッダー
+    const values = targetSheet.getRange(3, 1, numRows, 19).getValues();
 
     for (let i = 0; i < values.length; i++) {
       const row = values[i];
       const caseNumber = row[COL.caseNumber - 1];
-      const caseName = row[COL.caseName - 1];
-      if (!caseName) continue;
+      if (!caseNumber) continue;
 
-      const rowNum = i + 2;
-      const rowLabel = `[${rowNum}行目 ${caseName}]`;
+      const rowNum = i + 3;
+      const rowLabel = `[${rowNum}行目 案件${caseNumber}]`;
 
-      let appFormUrl = row[COL.appFormUrl - 1];
-      let appFormPrefilled = row[COL.appFormPrefilled - 1];
-      let consentUrl = row[COL.consentUrl - 1];
-      let consentPrefilled = row[COL.consentPrefilled - 1];
-      let detailUrl = row[COL.detailUrl - 1];
-      let detailPrefilled = row[COL.detailPrefilled - 1];
+      let appLink = row[COL.appLink - 1];
+      let appPlainUrl = row[COL.appPlainUrl - 1];
+      let consentLink = row[COL.consentLink - 1];
+      let consentPlainUrl = row[COL.consentPlainUrl - 1];
+      let detailLink = row[COL.detailLink - 1];
+      let detailPlainUrl = row[COL.detailPlainUrl - 1];
 
-      // ① 応募フォーム（食事制限の有無でテンプレートを出し分け）
-      if (!appFormUrl) {
-        const mealType = row[COL.mealType - 1];
-        const template = appTemplates[mealType];
-        if (template) {
+      // ① 応募フォーム
+      if (!appLink) {
+        const templateType = row[COL.appType - 1];
+        const template = appConfig.templates[templateType];
+        const fileName = row[COL.appFileName - 1];
+        const title = row[COL.appTitle - 1];
+        if (template && fileName) {
           const result = createFormLink(
-            template.formId, template.entryId, appFolder, caseName, caseNumber, `${rowLabel}(応募フォーム)`
+            template.formId, template.entryId, appFolder, fileName, title, caseNumber, `${rowLabel}(応募フォーム)`
           );
-          appFormUrl = result.viewUrl;
-          appFormPrefilled = result.prefilledUrl;
+          appPlainUrl = result.viewUrl;
+          appLink = result.prefilledUrl;
         }
       }
 
-      // ② 同意書（ブリーフィングの有無でテンプレートを出し分け）
-      if (!consentUrl) {
-        const briefingType = row[COL.briefingType - 1];
-        const template = consentTemplates[briefingType];
-        if (template) {
+      // ② 同意書
+      if (!consentLink) {
+        const templateType = row[COL.consentType - 1];
+        const template = consentConfig.templates[templateType];
+        const fileName = row[COL.consentFileName - 1];
+        const title = row[COL.consentTitle - 1];
+        if (template && fileName) {
           const result = createFormLink(
-            template.formId, template.entryId, consentFolder, caseName, caseNumber, `${rowLabel}(同意書)`
+            template.formId, template.entryId, consentFolder, fileName, title, caseNumber, `${rowLabel}(同意書)`
           );
-          consentUrl = result.viewUrl;
-          consentPrefilled = result.prefilledUrl;
+          consentPlainUrl = result.viewUrl;
+          consentLink = result.prefilledUrl;
         }
       }
 
       // ③ 詳細レス（テンプレートは1種類のみ、選択列なし）
-      if (!detailUrl && detailFormId && detailEntryId) {
-        const result = createFormLink(
-          detailFormId, detailEntryId, detailFolder, caseName, caseNumber, `${rowLabel}(詳細レス)`
-        );
-        detailUrl = result.viewUrl;
-        detailPrefilled = result.prefilledUrl;
+      if (!detailLink && detailTemplate) {
+        const fileName = row[COL.detailFileName - 1];
+        const title = row[COL.detailTitle - 1];
+        if (fileName) {
+          const result = createFormLink(
+            detailTemplate.formId, detailTemplate.entryId, detailFolder, fileName, title, caseNumber, `${rowLabel}(詳細レス)`
+          );
+          detailPlainUrl = result.viewUrl;
+          detailLink = result.prefilledUrl;
+        }
       }
 
-      targetSheet.getRange(rowNum, COL.appFormUrl, 1, 6).setValues([[
-        appFormUrl, appFormPrefilled, consentUrl, consentPrefilled, detailUrl, detailPrefilled
-      ]]);
+      targetSheet.getRange(rowNum, COL.appLink, 1, 3).setValues([[appLink, consentLink, detailLink]]);
+      targetSheet.getRange(rowNum, COL.appPlainUrl, 1, 3).setValues([[appPlainUrl, consentPlainUrl, detailPlainUrl]]);
     }
 
     ui.alert('フォームの一括作成処理が完了しました。');
