@@ -7,14 +7,14 @@ function normalizeEntryId(entryId) {
   return idStr.startsWith('entry.') ? idStr : `entry.${idStr}`;
 }
 
+// 新しい回答の通知メール送信先
+const NOTIFICATION_EMAIL = 'staff-global@tomonokai-corp.com';
+
 /**
- * 作成したフォームに新しい回答が来るたびに、スクリプト実行者へ通知メールを送る。
+ * 作成したフォームに新しい回答が来るたびに、NOTIFICATION_EMAIL宛てに通知メールを送る。
  * createFormLink()内でフォームごとに自動でトリガー登録される。
  */
 function notifyNewFormResponse(e) {
-  const email = Session.getActiveUser().getEmail();
-  if (!email) return;
-
   const trigger = ScriptApp.getProjectTriggers().find(t => t.getUniqueId() === e.triggerUid);
   const formId = trigger ? trigger.getTriggerSourceId() : null;
   const form = formId ? FormApp.openById(formId) : null;
@@ -22,7 +22,7 @@ function notifyNewFormResponse(e) {
   const editUrl = form ? form.getEditUrl() : '';
 
   MailApp.sendEmail({
-    to: email,
+    to: NOTIFICATION_EMAIL,
     subject: `【新しい回答】${formTitle}`,
     body: `フォーム「${formTitle}」に新しい回答がありました。\n\n回答を確認する: ${editUrl}`
   });
