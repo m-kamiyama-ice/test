@@ -1,4 +1,13 @@
 /**
+ * 設定用シートのentryIdセルが「entry.」プレフィックスなしで
+ * 数字だけ入力されていても事前入力URLが機能するよう補完する
+ */
+function normalizeEntryId(entryId) {
+  const idStr = String(entryId).trim();
+  return idStr.startsWith('entry.') ? idStr : `entry.${idStr}`;
+}
+
+/**
  * スプレッドシートのメニューに3つの項目を追加する関数
  */
 function onOpen() {
@@ -104,7 +113,7 @@ function createApplicationForms() {
         values[i][6] = viewUrl;
 
         if (caseNumber) {
-          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${templateInfo.entryId}=${encodeURIComponent(caseNumber)}`;
+          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${normalizeEntryId(templateInfo.entryId)}=${encodeURIComponent(caseNumber)}`;
           values[i][7] = prefilledUrl;
         }
       }
@@ -212,7 +221,7 @@ function createConsentForms() {
         values[i][6] = viewUrl;
 
         if (caseNumber) {
-          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${templateInfo.entryId}=${encodeURIComponent(caseNumber)}`;
+          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${normalizeEntryId(templateInfo.entryId)}=${encodeURIComponent(caseNumber)}`;
           values[i][7] = prefilledUrl;
         }
       }
@@ -308,7 +317,7 @@ function createDetailForms() {
         values[i][5] = viewUrl;
 
         if (caseNumber) {
-          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${templateEntryId}=${encodeURIComponent(caseNumber)}`;
+          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${normalizeEntryId(templateEntryId)}=${encodeURIComponent(caseNumber)}`;
           values[i][6] = prefilledUrl;
         }
       }
