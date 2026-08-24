@@ -193,7 +193,7 @@ function createAllForms() {
   }
 
   const COL = {
-    caseNumber: 1, appType: 2, consentType: 3,
+    caseNumber: 1, appType: 2, consentType: 3, area: 4,
     appLink: 7, consentLink: 8, detailLink: 9,
     appFileName: 11, appTitle: 12,
     consentFileName: 13, consentTitle: 14,
@@ -220,7 +220,12 @@ function createAllForms() {
     for (let i = 0; i < values.length; i++) {
       const row = values[i];
       const caseNumber = row[COL.caseNumber - 1];
-      if (!caseNumber) continue;
+      const appType = row[COL.appType - 1];
+      const consentType = row[COL.consentType - 1];
+      const area = row[COL.area - 1];
+      // A〜D列（案件番号・応募フォームのテンプレート種別・同意書のテンプレート種別・募集エリア）が
+      // すべて入力されている行のみ対象とする
+      if (!caseNumber || !appType || !consentType || !area) continue;
 
       const rowNum = i + 3;
       const rowLabel = `[${rowNum}行目 案件${caseNumber}]`;
