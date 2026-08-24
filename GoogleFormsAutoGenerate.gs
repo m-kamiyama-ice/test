@@ -8,132 +8,101 @@ function normalizeEntryId(entryId) {
 }
 
 /**
- * スプレッドシートのメニューに3つの項目を追加する関数
+ * スプレッドシートのメニューを追加する関数
  */
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('フォーム自動生成')
-    .addItem('【応募フォーム】を作成', 'createApplicationForms')
-    .addSeparator()
-    .addItem('【同意書】を作成', 'createConsentForms')
-    .addItem('【詳細レス】を作成', 'createDetailForms')
+    .addItem('リンクを一括作成', 'createAllForms')
     .addToUi();
 }
 
-// =================================================================
-// 1. 応募フォーム（3テンプレート）作成用スクリプト
-// =================================================================
-function createApplicationForms() {
-  const settingSheetName = '設定用シート';
-  const targetSheetName = '応募フォーム';
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const settingSheet = ss.getSheetByName(settingSheetName);
-  const targetSheet = ss.getSheetByName(targetSheetName);
-  const ui = SpreadsheetApp.getUi();
+/**
+ * 設定用シートから「テンプレート名 → {formId, entryId}」のマップを読み込む
+ */
+function loadTemplateMap(settingSheet, nameRow, nameStartCol, nameEndCol, formIdRow, entryIdRow) {
+  const templateNames = settingSheet.getRange(nameRow, nameStartCol, 1, nameEndCol - nameStartCol + 1).getValues()[0];
+  const templates = {};
 
-  if (!settingSheet) {
-    ui.alert(`「${settingSheetName}」が見つかりません。`);
-    return;
+  for (let i = 0; i < templateNames.length; i++) {
+    const col = nameStartCol + i;
+    const formId = settingSheet.getRange(formIdRow, col).getValue();
+    const entryId = settingSheet.getRange(entryIdRow, col).getValue();
+    if (formId && entryId && templateNames[i]) {
+      templates[templateNames[i]] = { formId: formId, entryId: entryId };
+    }
   }
-  if (!targetSheet) {
-    ui.alert(`「${targetSheetName}」が見つかりません。`);
-    return;
+
+  return templates;
+}
+
+/**
+ * テンプレートフォームをコピーして公開設定・共有設定を行い、
+ * 表示用URLと案件番号付きURLを返す
+ */
+function createFormLink(templateFormId, entryId, parentFolder, caseName, caseNumber, rowLabel) {
+  const newFormFile = DriveApp.getFileById(templateFormId).makeCopy(caseName, parentFolder);
+  const newForm = FormApp.openById(newFormFile.getId());
+
+  try {
+    newForm.setPublished(true);
+  } catch (err) {
+    throw new Error(`${rowLabel} setPublished失敗: ${err.message}`);
   }
 
   try {
-    const folderId = settingSheet.getRange('A3').getValue();
-    const templateNames = settingSheet.getRange('B2:D2').getValues()[0];
-    const templates = {};
-
-    for (let i = 0; i < templateNames.length; i++) {
-      const col = i + 2;
-      const formId = settingSheet.getRange(3, col).getValue();
-      const entryId = settingSheet.getRange(4, col).getValue();
-      if (formId && entryId && templateNames[i]) {
-        templates[templateNames[i]] = { formId: formId, entryId: entryId };
-      }
-    }
-
-    const dataRange = targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, 8);
-    const values = dataRange.getValues();
-    const parentFolder = DriveApp.getFolderById(folderId);
-
-    for (let i = 0; i < values.length; i++) {
-      const caseNumber = values[i][0];
-      const caseName = values[i][1];
-      const formTitle = values[i][2];
-      const templateType = values[i][3];
-      let formUrl = values[i][6]; // G列（フォームURL）
-      let prefilledUrlValue = values[i][7]; // H列（案件番号付きURL）
-
-      const templateInfo = templates[templateType];
-
-      if (caseName && templateInfo && !formUrl) {
-        const newFormFile = DriveApp.getFileById(templateInfo.formId).makeCopy(caseName, parentFolder);
-        const newForm = FormApp.openById(newFormFile.getId());
-
-        try {
-          newForm.setPublished(true);
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
-        }
-
-        try {
-          newForm.setAcceptingResponses(true);
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setAcceptingResponses失敗: ${err.message}`);
-        }
-
-        try {
-          DriveApp.getFileById(newForm.getId()).setSharing(
-            DriveApp.Access.ANYONE_WITH_LINK,
-            DriveApp.Permission.VIEW
-          );
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setSharing失敗: ${err.message}`);
-        }
-
-        if (formTitle) {
-          newForm.setTitle(formTitle);
-        }
-
-        let viewUrl;
-
-        try {
-          if (newForm.supportsAdvancedResponderPermissions()) {
-            viewUrl = newForm.getPublishedUrl();
-          } else {
-            viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
-          }
-        } catch (err) {
-          Logger.log(`[${i + 2}行目 ${caseName}] getPublishedUrl失敗のためgetEditUrlにフォールバック: ${err.message}`);
-          viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
-        }
-
-        values[i][6] = viewUrl;
-
-        if (caseNumber) {
-          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${normalizeEntryId(templateInfo.entryId)}=${encodeURIComponent(caseNumber)}`;
-          values[i][7] = prefilledUrl;
-        }
-      }
-    }
-
-    const outputValues = values.map(row => [row[6], row[7]]);
-    targetSheet.getRange(2, 7, outputValues.length, 2).setValues(outputValues);
-
-    ui.alert('【応募フォーム】の作成処理が完了しました。');
-  } catch (e) {
-    ui.alert(`エラー(応募フォーム): ${e.message}`);
+    newForm.setAcceptingResponses(true);
+  } catch (err) {
+    throw new Error(`${rowLabel} setAcceptingResponses失敗: ${err.message}`);
   }
+
+  try {
+    DriveApp.getFileById(newForm.getId()).setSharing(
+      DriveApp.Access.ANYONE_WITH_LINK,
+      DriveApp.Permission.VIEW
+    );
+  } catch (err) {
+    throw new Error(`${rowLabel} setSharing失敗: ${err.message}`);
+  }
+
+  newForm.setTitle(caseName);
+
+  let viewUrl;
+  try {
+    if (newForm.supportsAdvancedResponderPermissions()) {
+      viewUrl = newForm.getPublishedUrl();
+    } else {
+      viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
+    }
+  } catch (err) {
+    Logger.log(`${rowLabel} getPublishedUrl失敗のためgetEditUrlにフォールバック: ${err.message}`);
+    viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
+  }
+
+  let prefilledUrl = '';
+  if (caseNumber) {
+    prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${normalizeEntryId(entryId)}=${encodeURIComponent(caseNumber)}`;
+  }
+
+  return { viewUrl: viewUrl, prefilledUrl: prefilledUrl };
 }
 
 // =================================================================
-// 2. 同意書（2テンプレート）作成用スクリプト
+// 「案件管理」シートの1行ごとに、応募フォーム・同意書・詳細レスの
+// リンクをまとめて作成する
+//
+// 列構成:
+//   A 案件管理番号
+//   B 案件名
+//   C 食事制限の有無（応募フォームのテンプレート選択）
+//   D ブリーフィングの有無（同意書のテンプレート選択）
+//   E 応募フォームURL       F 応募フォーム案件番号付きURL
+//   G 同意書URL             H 同意書案件番号付きURL
+//   I 詳細レスURL           J 詳細レス案件番号付きURL
 // =================================================================
-function createConsentForms() {
+function createAllForms() {
   const settingSheetName = '設定用シート';
-  const targetSheetName = '同意書';
+  const targetSheetName = '案件管理';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const settingSheet = ss.getSheetByName(settingSheetName);
   const targetSheet = ss.getSheetByName(targetSheetName);
@@ -148,186 +117,91 @@ function createConsentForms() {
     return;
   }
 
-  try {
-    const folderId = settingSheet.getRange('A8').getValue();
-    const templateNames = settingSheet.getRange('B7:C7').getValues()[0];
-    const templates = {};
-
-    for (let i = 0; i < templateNames.length; i++) {
-      const col = i + 2;
-      const formId = settingSheet.getRange(8, col).getValue();
-      const entryId = settingSheet.getRange(9, col).getValue();
-      if (formId && entryId && templateNames[i]) {
-        templates[templateNames[i]] = { formId: formId, entryId: entryId };
-      }
-    }
-
-    const dataRange = targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, 8);
-    const values = dataRange.getValues();
-    const parentFolder = DriveApp.getFolderById(folderId);
-
-    for (let i = 0; i < values.length; i++) {
-      const caseNumber = values[i][0];
-      const caseName = values[i][1];
-      const formTitle = values[i][2];
-      const templateType = values[i][3];
-      let formUrl = values[i][6]; // G列
-      let prefilledUrlValue = values[i][7]; // H列
-
-      const templateInfo = templates[templateType];
-
-      if (caseName && templateInfo && !formUrl) {
-        const newFormFile = DriveApp.getFileById(templateInfo.formId).makeCopy(caseName, parentFolder);
-        const newForm = FormApp.openById(newFormFile.getId());
-
-        try {
-          newForm.setPublished(true);
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
-        }
-
-        try {
-          newForm.setAcceptingResponses(true);
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setAcceptingResponses失敗: ${err.message}`);
-        }
-
-        try {
-          DriveApp.getFileById(newForm.getId()).setSharing(
-            DriveApp.Access.ANYONE_WITH_LINK,
-            DriveApp.Permission.VIEW
-          );
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setSharing失敗: ${err.message}`);
-        }
-
-        if (formTitle) {
-          newForm.setTitle(formTitle);
-        }
-
-        let viewUrl;
-
-        try {
-          if (newForm.supportsAdvancedResponderPermissions()) {
-            viewUrl = newForm.getPublishedUrl();
-          } else {
-            viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
-          }
-        } catch (err) {
-          Logger.log(`[${i + 2}行目 ${caseName}] getPublishedUrl失敗のためgetEditUrlにフォールバック: ${err.message}`);
-          viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
-        }
-
-        values[i][6] = viewUrl;
-
-        if (caseNumber) {
-          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${normalizeEntryId(templateInfo.entryId)}=${encodeURIComponent(caseNumber)}`;
-          values[i][7] = prefilledUrl;
-        }
-      }
-    }
-
-    const outputValues = values.map(row => [row[6], row[7]]);
-    targetSheet.getRange(2, 7, outputValues.length, 2).setValues(outputValues);
-
-    ui.alert('【同意書】の作成処理が完了しました。');
-  } catch (e) {
-    ui.alert(`エラー(同意書): ${e.message}`);
-  }
-}
-
-// =================================================================
-// 3. 詳細レス（1テンプレート）作成用スクリプト
-// =================================================================
-function createDetailForms() {
-  const settingSheetName = '設定用シート';
-  const targetSheetName = '詳細レス';
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const settingSheet = ss.getSheetByName(settingSheetName);
-  const targetSheet = ss.getSheetByName(targetSheetName);
-  const ui = SpreadsheetApp.getUi();
-
-  if (!settingSheet) {
-    ui.alert(`「${settingSheetName}」が見つかりません。`);
-    return;
-  }
-  if (!targetSheet) {
-    ui.alert(`「${targetSheetName}」が見つかりません。`);
+  const lastRow = targetSheet.getLastRow();
+  if (lastRow < 2) {
+    ui.alert('入力データがありません。');
     return;
   }
 
-  try {
-    const folderId = settingSheet.getRange('A13').getValue();
-    const templateFormId = settingSheet.getRange('B13').getValue();
-    const templateEntryId = settingSheet.getRange('B14').getValue();
+  const COL = {
+    caseNumber: 1, caseName: 2, mealType: 3, briefingType: 4,
+    appFormUrl: 5, appFormPrefilled: 6,
+    consentUrl: 7, consentPrefilled: 8,
+    detailUrl: 9, detailPrefilled: 10
+  };
 
-    const dataRange = targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, 7);
-    const values = dataRange.getValues();
-    const parentFolder = DriveApp.getFolderById(folderId);
+  try {
+    const appFolder = DriveApp.getFolderById(settingSheet.getRange('A3').getValue());
+    const appTemplates = loadTemplateMap(settingSheet, 2, 2, 4, 3, 4); // B2:D2 / row3=formId / row4=entryId
+
+    const consentFolder = DriveApp.getFolderById(settingSheet.getRange('A8').getValue());
+    const consentTemplates = loadTemplateMap(settingSheet, 7, 2, 3, 8, 9); // B7:C7 / row8=formId / row9=entryId
+
+    const detailFolder = DriveApp.getFolderById(settingSheet.getRange('A13').getValue());
+    const detailFormId = settingSheet.getRange('B13').getValue();
+    const detailEntryId = settingSheet.getRange('B14').getValue();
+
+    const numRows = lastRow - 1;
+    const values = targetSheet.getRange(2, 1, numRows, 10).getValues();
 
     for (let i = 0; i < values.length; i++) {
-      const caseNumber = values[i][0];
-      const caseName = values[i][1];
-      const formTitle = values[i][2];
-      let formUrl = values[i][5]; // F列
-      let prefilledUrlValue = values[i][6]; // G列
+      const row = values[i];
+      const caseNumber = row[COL.caseNumber - 1];
+      const caseName = row[COL.caseName - 1];
+      if (!caseName) continue;
 
-      if (caseName && !formUrl) {
-        const newFormFile = DriveApp.getFileById(templateFormId).makeCopy(caseName, parentFolder);
-        const newForm = FormApp.openById(newFormFile.getId());
+      const rowNum = i + 2;
+      const rowLabel = `[${rowNum}行目 ${caseName}]`;
 
-        try {
-          newForm.setPublished(true);
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
-        }
+      let appFormUrl = row[COL.appFormUrl - 1];
+      let appFormPrefilled = row[COL.appFormPrefilled - 1];
+      let consentUrl = row[COL.consentUrl - 1];
+      let consentPrefilled = row[COL.consentPrefilled - 1];
+      let detailUrl = row[COL.detailUrl - 1];
+      let detailPrefilled = row[COL.detailPrefilled - 1];
 
-        try {
-          newForm.setAcceptingResponses(true);
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setAcceptingResponses失敗: ${err.message}`);
-        }
-
-        try {
-          DriveApp.getFileById(newForm.getId()).setSharing(
-            DriveApp.Access.ANYONE_WITH_LINK,
-            DriveApp.Permission.VIEW
+      // ① 応募フォーム（食事制限の有無でテンプレートを出し分け）
+      if (!appFormUrl) {
+        const mealType = row[COL.mealType - 1];
+        const template = appTemplates[mealType];
+        if (template) {
+          const result = createFormLink(
+            template.formId, template.entryId, appFolder, caseName, caseNumber, `${rowLabel}(応募フォーム)`
           );
-        } catch (err) {
-          throw new Error(`[${i + 2}行目 ${caseName}] setSharing失敗: ${err.message}`);
-        }
-
-        if (formTitle) {
-          newForm.setTitle(formTitle);
-        }
-
-        let viewUrl;
-
-        try {
-          if (newForm.supportsAdvancedResponderPermissions()) {
-            viewUrl = newForm.getPublishedUrl();
-          } else {
-            viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
-          }
-        } catch (err) {
-          Logger.log(`[${i + 2}行目 ${caseName}] getPublishedUrl失敗のためgetEditUrlにフォールバック: ${err.message}`);
-          viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
-        }
-
-        values[i][5] = viewUrl;
-
-        if (caseNumber) {
-          const prefilledUrl = `${viewUrl.replace('/viewform', '/formResponse')}?${normalizeEntryId(templateEntryId)}=${encodeURIComponent(caseNumber)}`;
-          values[i][6] = prefilledUrl;
+          appFormUrl = result.viewUrl;
+          appFormPrefilled = result.prefilledUrl;
         }
       }
+
+      // ② 同意書（ブリーフィングの有無でテンプレートを出し分け）
+      if (!consentUrl) {
+        const briefingType = row[COL.briefingType - 1];
+        const template = consentTemplates[briefingType];
+        if (template) {
+          const result = createFormLink(
+            template.formId, template.entryId, consentFolder, caseName, caseNumber, `${rowLabel}(同意書)`
+          );
+          consentUrl = result.viewUrl;
+          consentPrefilled = result.prefilledUrl;
+        }
+      }
+
+      // ③ 詳細レス（テンプレートは1種類のみ、選択列なし）
+      if (!detailUrl && detailFormId && detailEntryId) {
+        const result = createFormLink(
+          detailFormId, detailEntryId, detailFolder, caseName, caseNumber, `${rowLabel}(詳細レス)`
+        );
+        detailUrl = result.viewUrl;
+        detailPrefilled = result.prefilledUrl;
+      }
+
+      targetSheet.getRange(rowNum, COL.appFormUrl, 1, 6).setValues([[
+        appFormUrl, appFormPrefilled, consentUrl, consentPrefilled, detailUrl, detailPrefilled
+      ]]);
     }
 
-    const outputValues = values.map(row => [row[5], row[6]]);
-    targetSheet.getRange(2, 6, outputValues.length, 2).setValues(outputValues);
-
-    ui.alert('【詳細レス】の作成処理が完了しました。');
+    ui.alert('フォームの一括作成処理が完了しました。');
   } catch (e) {
-    ui.alert(`エラー(詳細レス): ${e.message}`);
+    ui.alert(`エラー: ${e.message}`);
   }
 }
