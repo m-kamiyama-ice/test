@@ -8,6 +8,27 @@ function normalizeEntryId(entryId) {
 }
 
 /**
+ * 作成したフォームに新しい回答が来るたびに、スクリプト実行者へ通知メールを送る。
+ * createFormLink()内でフォームごとに自動でトリガー登録される。
+ */
+function notifyNewFormResponse(e) {
+  const email = Session.getActiveUser().getEmail();
+  if (!email) return;
+
+  const trigger = ScriptApp.getProjectTriggers().find(t => t.getUniqueId() === e.triggerUid);
+  const formId = trigger ? trigger.getTriggerSourceId() : null;
+  const form = formId ? FormApp.openById(formId) : null;
+  const formTitle = form ? form.getTitle() : 'フォーム';
+  const editUrl = form ? form.getEditUrl() : '';
+
+  MailApp.sendEmail({
+    to: email,
+    subject: `【新しい回答】${formTitle}`,
+    body: `フォーム「${formTitle}」に新しい回答がありました。\n\n回答を確認する: ${editUrl}`
+  });
+}
+
+/**
  * スプレッドシートのメニューを追加する関数
  */
 function onOpen() {
@@ -91,6 +112,15 @@ function createFormLink(templateFormId, entryId, parentFolder, fileName, formTit
 
   if (formTitle) {
     newForm.setTitle(formTitle);
+  }
+
+  try {
+    ScriptApp.newTrigger('notifyNewFormResponse')
+      .forForm(newForm)
+      .onFormSubmit()
+      .create();
+  } catch (err) {
+    Logger.log(`${rowLabel} 通知トリガー設定失敗: ${err.message}`);
   }
 
   let viewUrl;
