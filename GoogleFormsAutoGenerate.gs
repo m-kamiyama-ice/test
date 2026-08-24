@@ -64,12 +64,21 @@ function createApplicationForms() {
         const newForm = FormApp.openById(newFormFile.getId());
 
         newForm.setAcceptingResponses(true);
-        newForm.setPublished(true);
 
-        DriveApp.getFileById(newForm.getId()).setSharing(
-          DriveApp.Access.ANYONE_WITH_LINK,
-          DriveApp.Permission.VIEW
-        );
+        try {
+          newForm.setPublished(true);
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
+        }
+
+        try {
+          DriveApp.getFileById(newForm.getId()).setSharing(
+            DriveApp.Access.ANYONE_WITH_LINK,
+            DriveApp.Permission.VIEW
+          );
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setSharing失敗: ${err.message}`);
+        }
 
         if (formTitle) {
           newForm.setTitle(formTitle);
@@ -84,6 +93,7 @@ function createApplicationForms() {
             viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
           }
         } catch (err) {
+          Logger.log(`[${i + 2}行目 ${caseName}] getPublishedUrl失敗のためgetEditUrlにフォールバック: ${err.message}`);
           viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
         }
 
@@ -158,12 +168,21 @@ function createConsentForms() {
         const newForm = FormApp.openById(newFormFile.getId());
 
         newForm.setAcceptingResponses(true);
-        newForm.setPublished(true);
 
-        DriveApp.getFileById(newForm.getId()).setSharing(
-          DriveApp.Access.ANYONE_WITH_LINK,
-          DriveApp.Permission.VIEW
-        );
+        try {
+          newForm.setPublished(true);
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
+        }
+
+        try {
+          DriveApp.getFileById(newForm.getId()).setSharing(
+            DriveApp.Access.ANYONE_WITH_LINK,
+            DriveApp.Permission.VIEW
+          );
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setSharing失敗: ${err.message}`);
+        }
 
         if (formTitle) {
           newForm.setTitle(formTitle);
@@ -178,6 +197,7 @@ function createConsentForms() {
             viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
           }
         } catch (err) {
+          Logger.log(`[${i + 2}行目 ${caseName}] getPublishedUrl失敗のためgetEditUrlにフォールバック: ${err.message}`);
           viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
         }
 
@@ -240,12 +260,21 @@ function createDetailForms() {
         const newForm = FormApp.openById(newFormFile.getId());
 
         newForm.setAcceptingResponses(true);
-        newForm.setPublished(true);
 
-        DriveApp.getFileById(newForm.getId()).setSharing(
-          DriveApp.Access.ANYONE_WITH_LINK,
-          DriveApp.Permission.VIEW
-        );
+        try {
+          newForm.setPublished(true);
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setPublished失敗: ${err.message}`);
+        }
+
+        try {
+          DriveApp.getFileById(newForm.getId()).setSharing(
+            DriveApp.Access.ANYONE_WITH_LINK,
+            DriveApp.Permission.VIEW
+          );
+        } catch (err) {
+          throw new Error(`[${i + 2}行目 ${caseName}] setSharing失敗: ${err.message}`);
+        }
 
         if (formTitle) {
           newForm.setTitle(formTitle);
@@ -260,6 +289,7 @@ function createDetailForms() {
             viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
           }
         } catch (err) {
+          Logger.log(`[${i + 2}行目 ${caseName}] getPublishedUrl失敗のためgetEditUrlにフォールバック: ${err.message}`);
           viewUrl = newForm.getEditUrl().replace('/edit', '/viewform');
         }
 
