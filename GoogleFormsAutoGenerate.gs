@@ -151,7 +151,7 @@ function createFormLink(templateFormId, entryId, parentFolder, fileName, formTit
 //   A 案件番号
 //   B 応募フォームのテンプレート種別
 //   C 同意書のテンプレート種別
-//   D 募集エリア（未使用）    E 実施日（VLOOKUP・未使用）   F 学校名（VLOOKUP・未使用）
+//   D メルマガタイトル（未使用）    E 実施日（VLOOKUP・未使用）   F 学校名（VLOOKUP・未使用）
 //   G 応募フォーム 差し込み済みリンク（出力）
 //   H 同意書 差し込み済みリンク（出力）
 //   I 詳細レス 差し込み済みリンク（出力）
@@ -193,7 +193,7 @@ function createAllForms() {
   }
 
   const COL = {
-    caseNumber: 1, appType: 2, consentType: 3, area: 4,
+    caseNumber: 1, appType: 2, consentType: 3, newsletterTitle: 4,
     appLink: 7, consentLink: 8, detailLink: 9,
     appFileName: 11, appTitle: 12,
     consentFileName: 13, consentTitle: 14,
@@ -222,10 +222,10 @@ function createAllForms() {
       const caseNumber = row[COL.caseNumber - 1];
       const appType = row[COL.appType - 1];
       const consentType = row[COL.consentType - 1];
-      const area = row[COL.area - 1];
-      // A〜D列（案件番号・応募フォームのテンプレート種別・同意書のテンプレート種別・募集エリア）が
+      const newsletterTitle = row[COL.newsletterTitle - 1];
+      // A〜D列（案件番号・応募フォーム形式・同意書・メルマガタイトル）が
       // すべて入力されている行のみ対象とする
-      if (!caseNumber || !appType || !consentType || !area) continue;
+      if (!caseNumber || !appType || !consentType || !newsletterTitle) continue;
 
       const rowNum = i + 3;
       const rowLabel = `[${rowNum}行目 案件${caseNumber}]`;
